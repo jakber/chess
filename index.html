@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Chesstastic</title>
+	<style type="text/css">
+	body { margin:0; padding:0; font-family: Helvetica; background-color:#222;}
+	.piece {
+		background-image:url('pieces.png'); 
+		background-size: auto 250px;
+		overflow:hidden; 
+		float:left;
+		border:0px solid black;
+		position:absolute;
+		pointer-events:none;
+	}
+
+	.white-king {
+		background-position: -4px -12px;
+		width:44px; height:100px;
+	}
+	.white-queen {
+		background-position: -49px -12px;
+		width:44px; height:100px;
+	}
+	.white-bishop {
+		background-position: -91px -12px;
+		width:44px; height:100px;
+	}
+	.white-knight {
+		background-position: -131px -12px;
+		width:44px; height:100px;
+	}
+	.white-rook {
+		background-position: -172px -12px;
+		width:44px; height:100px;
+	}
+	.white-pawn {
+		background-position: -210px -12px;
+		width:44px; height:100px;
+	}
+	.black-king {
+		background-position: -2px -124px;
+		width:44px; height:100px;
+	}
+	.black-queen {
+		background-position: -47px -124px;
+		width:44px; height:100px;
+	}
+	.black-bishop {
+		background-position: -89px -124px;
+		width:44px; height:100px;
+	}
+	.black-knight {
+		background-position: -129px -124px;
+		width:44px; height:100px;
+	}
+	.black-rook {
+		background-position: -169px -124px;
+		width:44px; height:100px;
+	}
+	.black-pawn {
+		background-position: -207px -124px;
+		width:44px; height:100px;
+	}
+
+	.board>div {clear:both;}
+	.board>div>div { width:120px; height:120px;float:left;}
+	.board>div:nth-child(even)>div:nth-child(odd) {background-color:#003;}
+	.board>div:nth-child(even)>div:nth-child(even) {background-color:#ffa;}
+	.board>div:nth-child(odd)>div:nth-child(even) {background-color:#003;}
+	.board>div:nth-child(odd)>div:nth-child(odd) {background-color:#ffa;}
+	.board>div>div.active {	
+		background-image:url('circle-dashed-8-128.png');
+		background-position: -4px -4px;
+	}
+}
+	</style>
+</head>
+
+<body>
+	<div class="board"></div>
+	<div class="pieces"></div>
+	<div style="position:absolute;right:20px;top:20px;background-color:#999;width:300px;padding:20px;" id="status">
+		<h1 id="turn"><span style="color:#ffa"></span>'s turn</h1>
+		<div id="play_as">
+			Observing<br>
+			<button data-color="white">play as white</button>
+			<button data-color="black">play as black</button>
+		</div>
+		<button id="new_game" class="button" value="">new game</button>
+
+	</div>
+	
+</body>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script type="text/javascript">
+var socket = io.connect('/');
+
+var Piece = function(color, role, startingSquare) {
+	this.color = color;
+	this.role = role;
+	this.startingSquare = startingSquare;
+	return this;
+}
+
+var getClass = function(piece) {
+	return piece.color + "-" + piece.role;
+}
+
+var positionPiece = function(row, col) {
+	return { 
+		left: "" +(col*120+40)+"px",
+		top: "" +(row*120+12)+"px"
+	};
+}
+
+var render = function(){
+	$(".pieces").empty();
+	for (var i = 0; i < board.length; i++) {
+		for (var j = 0; j < board[i].length; j++) {
+			if (board[i][j].color != "empty") {
+				var p = $(document.createElement("div")).addClass("piece");
+				p.addClass(getClass(board[i][j]));
+				p.css(positionPiece(i,j));
+				p.attr("id", "p" + board[i][j].startingSquare[0] + board[i][j].startingSquare[1]);
+				$(".pieces").append(p);
+			}
+		}
+	}	
+	$("#turn>span").css({"color":colors[turn]});
+	$("#turn>span").html(capitalize(turn));
+}
+
+var colors = {
+	"white": "#ffa",
+	"black": "#003"
+}
+
+
+var capitalize = function(s) {
+	return s.charAt(0).toUpperCase() + s.slice(1);
+}
+var move = function(from, to) {
+	// moving
+	console.log("moving:")
+	console.log(board[from[0]][from[1]]);
+	console.log("to (" + to[0] + ", " + to[1] + ")");
+	var piece = "#p" + board[from[0]][from[1]].startingSquare[0] + board[from[0]][from[1]].startingSquare[1];
+	var dest = "#p" + board[to[0]][to[1]].startingSquare[0] + board[to[0]][to[1]].startingSquare[1];
+	board[to[0]][to[1]] = board[from[0]][from[1]];
+	board[from[0]][from[1]] = new Piece("empty", null, [-1, -1]);
+	$(piece).animate(positionPiece(to[0], to[1]), {
+		complete: function() {
+			if (board[to[0]][to[1]].role == "pawn" && (to[0] == 0 || to[0] == 7)) {
+				console.log("promotion!")
+    			$(piece).removeClass(getClass(board[to[0]][to[1]]))
+		    	board[to[0]][to[1]].role = "queen";
+    			$(piece).addClass(getClass(board[to[0]][to[1]]))
+    		}
+		}
+	});
+	$(dest).fadeOut();
+	$("#turn>span").css({"color":colors[turn]});
+	$("#turn>span").html(capitalize(turn));
+	$(".board>div>div.active").removeClass("active");
+	selection = null;
+} 
+
+var selection = null;
+var my_color = null;
+var board = [];
+var turn = "white";
+
+$(function () {
+	for (var i = 0; i < 8; i++) {
+		var row = $(document.createElement("div"));
+		for (var j = 0; j < 8; j++) {
+			var sq = $(document.createElement("div"));
+			sq.data("row", i);
+			sq.data("col", j);
+			sq.click(function(e) {
+				if (my_color != null && turn == my_color) {
+					var i = $(e.target).data("row");
+					var j = $(e.target).data("col");
+					console.log("clicked row " + i +  ", col " + j);
+					console.log(selection)
+					if (selection == null) {
+						// select (if own piece)
+						if (board[i][j].color == my_color) {
+							selection = [i, j];
+							$(e.target).addClass("active");
+						}
+					} else if (_.isEqual(selection, [i, j])) {
+						// deselect
+						$(e.target).removeClass("active");
+						selection = null;
+					} else {
+						// move
+						if (selection != null) {
+							socket.emit("move", {
+								from: [selection[0], selection[1]],
+								to: [i, j]
+							});
+						}
+					}
+				}
+			});
+			row.append(sq);
+		}
+		$(".board").append(row);
+	}
+	render();
+	$("#new_game").click(function() {
+		console.log("reset")
+		socket.emit("reset");
+	});
+	$("#play_as>button").click(function(e) {
+		my_color = $(e.target).data("color");
+		$("#play_as").html("Playing as " + my_color)
+	});
+});
+
+socket.on('move', function (data) {
+	console.log("move received")
+	console.log(data);
+	turn = data["turn"];
+	move(data["from"], data["to"]);
+});
+socket.on('game', function (data) {
+	console.log("board received")
+	console.log(data);
+	board = data["board"];
+	turn = data["turn"];
+	render();
+});
+
+
+</script>
+
+
+
+</html>
